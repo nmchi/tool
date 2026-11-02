@@ -136,16 +136,19 @@ export class Connectors {
     const matches = Object.entries(payload).every(
       ([key, value]) => String(identity.data[key] ?? '') === value,
     );
-    if (!matches) {
-      const response = await this.api(
-        platform,
-        platform.connector === 'github' ? '/user' : '/api/v4/user',
-        {
-          method: platform.connector === 'github' ? 'PATCH' : 'PUT',
-          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        },
+    // GitLab only lets administrators edit a user's profile via API (PUT /users/:id),
+    // so a mismatch there is handed to the operator instead of attempting a write.
+    if (!matches && platform.connector === 'gitlab')
+      throw new RemoteError(
+        'GitLab không cho phép tự cập nhật hồ sơ qua API. Mở gitlab.com/-/user_settings/profile, điền tên, mô tả và website theo thông tin dự án rồi bấm tiếp tục để kiểm tra lại.',
+        { action: true },
       );
+    if (!matches) {
+      const response = await this.api(platform, '/user', {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
       checkApiResponse(response);
     }
     return { url: identity.profile_url, username: identity.username, changed: !matches };

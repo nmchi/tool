@@ -29,7 +29,12 @@ test('bulk jobs are independent across projects and active pair-kind duplicates 
     assert.equal(b.skipped, 4);
     assert.equal(store.all('SELECT * FROM jobs').length, 4);
     assert.throws(
-      () => store.createProject({ ...projectInput(), website: 'http://www.one.example.com/path' }),
+      () =>
+        store.createProject({
+          ...projectInput(),
+          email: 'other@one.example.com',
+          website: 'http://www.one.example.com/path',
+        }),
       /đã có dự án/,
     );
   } finally {

@@ -1,15 +1,17 @@
 import { useState, type FormEvent } from 'react';
 import { Check, LoaderCircle } from 'lucide-react';
 import { api } from '../api';
-import type { Project } from '../types';
+import type { Mailbox, Project } from '../types';
 
 import { Button, Field, Modal } from '../components/ui';
 export function ProjectModal({
   project,
+  mailboxes,
   close,
   done,
 }: {
   project?: Project;
+  mailboxes: Mailbox[];
   close: () => void;
   done: () => Promise<void>;
 }) {
@@ -22,6 +24,7 @@ export function ProjectModal({
     logo_url: project?.logo_url ?? '',
     entity_type: project?.entity_type ?? 'organization',
     monitoring: project ? !!project.monitoring : true,
+    mailbox_id: project?.mailbox_id ?? null,
   });
   const [busy, setBusy] = useState(false),
     [error, setError] = useState('');
@@ -104,8 +107,12 @@ export function ProjectModal({
           />
         </Field>
         <div className="form-grid">
-          <Field label="Email liên hệ" hint="Dùng email lâu dài do bạn quản lý.">
+          <Field
+            label="Email của website *"
+            hint="Email riêng của website này, không trùng website khác. Mọi hồ sơ entity của website đăng ký bằng đúng email này."
+          >
             <input
+              required
               type="email"
               value={form.email}
               onChange={(e) => setForm({ ...form, email: e.target.value })}
@@ -121,6 +128,26 @@ export function ProjectModal({
             />
           </Field>
         </div>
+        <Field
+          label="Hộp thư xác minh"
+          hint={
+            mailboxes.length
+              ? 'Nơi ứng dụng đọc thư xác nhận gửi tới email của website (email đó có thể là alias của hộp thư Workspace này).'
+              : 'Chưa có hộp thư. Thêm ở trang Dự án → Hộp thư.'
+          }
+        >
+          <select
+            value={form.mailbox_id ?? ''}
+            onChange={(e) => setForm({ ...form, mailbox_id: e.target.value || null })}
+          >
+            <option value="">Chưa chọn</option>
+            {mailboxes.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.name} · {m.address}
+              </option>
+            ))}
+          </select>
+        </Field>
         <label className="checkbox-label">
           <input
             type="checkbox"

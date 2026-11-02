@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import {
   Activity,
+  Braces,
   ArrowDownToLine,
   ArrowRight,
   ArrowUpRight,
@@ -17,6 +18,7 @@ import {
   Link2,
   ListChecks,
   LoaderCircle,
+  Mail,
   LockKeyhole,
   Menu,
   Network,
@@ -43,6 +45,8 @@ import { AccountModal } from './modals/AccountModal';
 import { JobModal } from './modals/JobModal';
 import { PlatformModal } from './modals/PlatformModal';
 import { GuideModal } from './modals/GuideModal';
+import { SchemaModal } from './modals/SchemaModal';
+import { MailboxModal } from './modals/MailboxModal';
 import { Login } from './modals/Login';
 import { ProfileModal, EvidenceModal } from './modals/ProfileModals';
 type Page = 'overview' | 'projects' | 'platforms' | 'queue' | 'inbox' | 'profiles';
@@ -56,6 +60,8 @@ type ModalState =
   | { type: 'evidence'; profile: Profile }
   | { type: 'platform'; platform: Platform }
   | { type: 'guide' }
+  | { type: 'schema'; project: Project }
+  | { type: 'mailboxes' }
   | null;
 export default function App() {
   const [state, setState] = useState<State | null>(null),
@@ -536,6 +542,10 @@ export default function App() {
                 title="Dự án"
                 description="Bộ thông tin riêng cho mỗi website và thương hiệu."
               >
+                <Button variant="secondary" onClick={() => open({ type: 'mailboxes' })}>
+                  <Mail size={17} />
+                  Hộp thư
+                </Button>
                 <Button onClick={() => open({ type: 'project' })}>
                   <Plus size={17} />
                   Tạo dự án
@@ -591,6 +601,13 @@ export default function App() {
                         />
                       </div>
                       <div className="project-card-footer">
+                        <Button
+                          variant="secondary"
+                          onClick={() => open({ type: 'schema', project: p })}
+                        >
+                          <Braces size={14} />
+                          Schema
+                        </Button>
                         <Button
                           variant="secondary"
                           onClick={() => open({ type: 'account', projectId: p.id })}
@@ -1015,6 +1032,7 @@ export default function App() {
       {modal?.type === 'project' && (
         <ProjectModal
           project={modal.project}
+          mailboxes={state.mailboxes}
           close={close}
           done={async () => {
             await refresh();
@@ -1114,6 +1132,10 @@ export default function App() {
         />
       )}
       {modal?.type === 'guide' && <GuideModal close={close} />}
+      {modal?.type === 'mailboxes' && (
+        <MailboxModal state={state} close={close} refresh={refresh} notify={notify} />
+      )}
+      {modal?.type === 'schema' && <SchemaModal project={modal.project} close={close} />}
     </div>
   );
 }

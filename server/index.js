@@ -5,6 +5,7 @@ import { createNetwork } from './network.js';
 import { Connectors } from './connectors.js';
 import { Worker } from './worker.js';
 import { createApp } from './app.js';
+import { createMail } from './mail.js';
 
 const host = process.env.HOST || '127.0.0.1';
 const port = Number(process.env.PORT || 4310);
@@ -17,10 +18,12 @@ const vault = createVault(dataDir);
 const store = new Store(path.join(dataDir, 'entity.sqlite'));
 const network = createNetwork();
 const connectors = new Connectors(network);
+const mail = createMail({ network });
 const app = createApp({
   store,
   connectors,
   vault,
+  mail,
   accessToken,
   publicOrigin: process.env.ENTITY_PUBLIC_ORIGIN,
   port,

@@ -5,6 +5,8 @@ import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { AppError, hostKey, publicUrl, normalizedUrl, safeCsv, matchesPlatform } from './urls.js';
 import { parseImport } from './catalog.js';
+import { entitySchema } from './schema.js';
+import { PROVIDERS, parseServiceAccount } from './mail.js';
 
 const urlField = z
   .string()
@@ -29,10 +31,25 @@ const projectSchema = z
       .max(60)
       .regex(/^[a-zA-Z0-9_.-]+$/, 'Username chỉ gồm chữ, số, dấu chấm, gạch dưới hoặc gạch ngang.'),
     description: z.string().trim().max(2000).default(''),
-    email: z.union([z.email(), z.literal('')]).default(''),
+    email: z.email('Cần email hợp lệ, riêng cho website này.'),
     logo_url: z.union([urlField, z.literal('')]).default(''),
     entity_type: z.enum(['organization', 'person']).default('organization'),
     monitoring: z.boolean().default(true),
+    mailbox_id: z.string().nullable().default(null),
+  })
+  .strict();
+const hostField = z
+  .string()
+  .trim()
+  .toLowerCase()
+  .regex(/^[a-z0-9.-]+.[a-z]{2,}$/, 'Máy chủ IMAP chỉ gồm tên miền, ví dụ imap.gmail.com.');
+const mailboxSchema = z
+  .object({
+    name: z.string().trim().min(1).max(100),
+    provider: z.enum(PROVIDERS),
+    address: z.email(),
+    imap_host: z.union([hostField, z.literal('')]).default(''),
+    secret: z.string().max(20000).default(''),
   })
   .strict();
 const importSchema = z.object({ text: z.string().min(1).max(400000) });
@@ -49,6 +66,7 @@ export function createApp({
   store,
   connectors,
   vault,
+  mail,
   accessToken = '',
   publicOrigin = '',
   port = 4310,
@@ -106,6 +124,95 @@ export function createApp({
   app.put('/api/projects/:id', (req, res) =>
     res.json(store.updateProject(req.params.id, parse(projectSchema, req.body))),
   );
+  // Validates the mailbox against its provider before anything is stored.
+  const checkMailbox = async (input, id) => {
+    if (input.provider === 'imap' && !input.imap_host)
+      throw new AppError('Nhập máy chủ IMAP, ví dụ imap.gmail.com.');
+    if (input.provider !== 'manual' && !input.secret)
+      throw new AppError(
+        input.provider === 'imap'
+          ? 'Nhập App Password của hộp thư.'
+          : 'Dán khóa JSON của service account.',
+      );
+    if (input.provider === 'gmail_api') parseServiceAccount(input.secret);
+    const mailbox = { ...input, id, imap_host: input.provider === 'imap' ? input.imap_host : '' };
+    await mail.client(mailbox, input.secret).test();
+    return mailbox;
+  };
+  app.post('/api/mailboxes', async (req, res) => {
+    const input = parse(mailboxSchema, req.body);
+    const id = randomUUID();
+    const mailbox = await checkMailbox(input, id);
+    try {
+      store.run(
+        `INSERT INTO mailboxes(id,name,provider,address,imap_host,encrypted_secret,verified_at,created_at)
+        VALUES (?,?,?,?,?,?,?,?)`,
+        id,
+        mailbox.name,
+        mailbox.provider,
+        mailbox.address.toLowerCase(),
+        mailbox.imap_host,
+        mailbox.secret ? vault.encrypt(mailbox.secret, id) : '',
+        mailbox.provider === 'manual' ? null : Date.now(),
+        Date.now(),
+      );
+    } catch (error) {
+      if (String(error.message).includes('UNIQUE'))
+        throw new AppError('Đã có hộp thư cùng tên.', 409);
+      throw error;
+    }
+    store.event('mailbox_added', `Đã kết nối hộp thư ${mailbox.name}.`);
+    const { encrypted_secret: _s, ...saved } = store.require('mailboxes', id);
+    res.status(201).json(saved);
+  });
+  app.post('/api/mailboxes/:id/test', async (req, res) => {
+    const input = parse(
+      z.object({ to: z.union([z.email(), z.literal('')]).optional() }).strict(),
+      req.body,
+    );
+    const mailbox = store.require('mailboxes', req.params.id);
+    if (mailbox.provider === 'manual') return res.json({ ok: true, messages: [], manual: true });
+    let secret;
+    try {
+      secret = vault.decrypt(mailbox.encrypted_secret, mailbox.id);
+    } catch {
+      throw new AppError('Không mở được bí mật của hộp thư. Hãy kết nối lại.', 409);
+    }
+    const client = mail.client(mailbox, secret);
+    await client.test();
+    store.run('UPDATE mailboxes SET verified_at=? WHERE id=?', Date.now(), mailbox.id);
+    // Only metadata of a few recent messages is returned, to confirm alias routing.
+    const messages = await client.search({
+      to: input.to || undefined,
+      since: Date.now() - 3 * 86400000,
+      limit: 5,
+    });
+    res.json({
+      ok: true,
+      messages: messages.map(({ from, subject, date }) => ({ from, subject, date })),
+    });
+  });
+  app.delete('/api/mailboxes/:id', (req, res) => {
+    const mailbox = store.require('mailboxes', req.params.id);
+    store.tx(() => {
+      store.run('UPDATE projects SET mailbox_id=NULL WHERE mailbox_id=?', mailbox.id);
+      store.run('DELETE FROM mailboxes WHERE id=?', mailbox.id);
+    });
+    store.event(
+      'mailbox_removed',
+      `Đã xóa hộp thư ${mailbox.name} khỏi workspace. Thu hồi App Password hoặc khóa service account nếu không dùng nữa.`,
+    );
+    res.json({ ok: true });
+  });
+  app.get('/api/projects/:id/schema', (req, res) => {
+    const project = store.require('projects', req.params.id);
+    const profiles = store.all(
+      `SELECT f.url,f.status,t.name AS platform_name FROM profiles f JOIN platforms t ON t.id=f.platform_id
+      WHERE f.project_id=? ORDER BY t.name`,
+      project.id,
+    );
+    res.json(entitySchema(project, profiles));
+  });
   app.post('/api/profiles', (req, res) => {
     const input = parse(
       z.object({ project_id: z.string(), platform_id: z.string(), url: urlField }).strict(),

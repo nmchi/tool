@@ -4,7 +4,7 @@ export const projectInput = (suffix = 'one') => ({
   website: `https://${suffix}.example.com`,
   username: `brand-${suffix}`,
   description: 'Dịch vụ sáng tạo dành cho thương hiệu.',
-  email: '',
+  email: `contact@${suffix}.example.com`,
   logo_url: '',
   entity_type: 'organization',
   monitoring: true,

@@ -31,8 +31,8 @@ export function GuideModal({ close }: { close: () => void }) {
           <li>
             <strong>Kết nối API khi phù hợp.</strong>
             <p>
-              GitHub và GitLab hỗ trợ cập nhật tên, mô tả, website của tài khoản đã có. Kết nối
-              token, kiểm tra tài khoản rồi tạo lô “Cập nhật qua API”.
+              GitHub hỗ trợ cập nhật tên, mô tả, website của tài khoản đã có; GitLab chỉ được đối
+              chiếu. Kết nối token, kiểm tra tài khoản rồi tạo lô “Cập nhật qua API”.
             </p>
           </li>
           <li>

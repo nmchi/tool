@@ -20,6 +20,10 @@ export function createVault(dataDir, suppliedKey = process.env.ENTITY_VAULT_KEY)
     }
     key = readFileSync(file);
     chmodSync(file, 0o600);
+    if (process.platform === 'win32')
+      console.warn(
+        'Windows không áp dụng quyền 0600 cho data/.vault-key. Đặt ENTITY_VAULT_KEY hoặc giới hạn quyền NTFS của thư mục dữ liệu.',
+      );
     if (key.length !== 32)
       throw new Error('Khóa mã hóa không hợp lệ. Không thay khóa khi đã có tài khoản.');
   }

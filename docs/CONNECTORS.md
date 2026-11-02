@@ -9,6 +9,8 @@
 - `verify(project, platform, profileUrl)` đọc công khai không dùng token tài khoản. Trả trạng thái, khớp thương hiệu, backlink, phương thức và lý do. Chỉ `healthy` khi có bằng chứng phù hợp. Phân biệt `unknown`, `needs_review` và `unavailable`.
 - `payloadFor` chuẩn bị nội dung từ thông tin thực tế của dự án. Mọi cắt ngắn/biến đổi cần được phản ánh trong UI và tài liệu. Không tạo địa chỉ, thông tin doanh nghiệp hoặc quyền sở hữu giả.
 
+GitLab: API v4 chỉ cho quản trị viên sửa hồ sơ (`PUT /users/:id`), nên `sync` của GitLab chỉ đọc và bàn giao cho người quản lý khi dữ liệu chưa khớp.
+
 ## Hàng đợi
 
 Các công việc `prepare`, `verify`, `sync` được lưu trong SQLite. Chỉ claim khi lô đang mở, nền tảng đã bật, không tạm dừng, còn hạn mức tốc độ và không có job khác đang chạy cho cùng dự án–nền tảng. Tối đa hai job đang chạy toàn database.

@@ -16,7 +16,9 @@ test('vault encrypts tokens at rest, binds ciphertext to an account and survives
     const box = JSON.parse(encrypted);
     box.tag = Buffer.alloc(16).toString('base64');
     assert.throws(() => vault.decrypt(JSON.stringify(box), 'account-a'));
-    assert.equal(statSync(path.join(dir, '.vault-key')).mode & 0o777, 0o600);
+    // Windows ignores POSIX mode bits; protect the key there with ENTITY_VAULT_KEY or NTFS ACLs.
+    if (process.platform !== 'win32')
+      assert.equal(statSync(path.join(dir, '.vault-key')).mode & 0o777, 0o600);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

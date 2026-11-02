@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { mkdirSync, chmodSync } from 'node:fs';
 import path from 'node:path';
 import { SEEDS } from './catalog.js';
-import { AppError, websiteKey, normalizedUrl, matchesPlatform } from './urls.js';
+import { AppError, websiteKey, normalizedUrl, matchesPlatform, emailKey, isGmail } from './urls.js';
 
 export const ACTIVE = ['queued', 'running', 'retry', 'action_required'];
 
@@ -13,7 +13,7 @@ export class Store {
       mkdirSync(path.dirname(filename), { recursive: true, mode: 0o700 });
     this.db = new DatabaseSync(filename);
     if (filename !== ':memory:') chmodSync(filename, 0o600);
-    if (this.get('PRAGMA user_version').user_version > 2)
+    if (this.get('PRAGMA user_version').user_version > 3)
       throw new Error('Database dùng phiên bản mới hơn ứng dụng này.');
     this.db.exec(`
       PRAGMA foreign_keys=ON;
@@ -68,6 +68,11 @@ export class Store {
         project_version INTEGER NOT NULL, checked_at INTEGER NOT NULL
       );
       CREATE INDEX IF NOT EXISTS profile_checks_recent ON profile_checks(profile_id,checked_at DESC);
+      CREATE TABLE IF NOT EXISTS mailboxes (
+        id TEXT PRIMARY KEY, name TEXT NOT NULL UNIQUE, provider TEXT NOT NULL,
+        address TEXT NOT NULL, imap_host TEXT NOT NULL DEFAULT '',
+        encrypted_secret TEXT NOT NULL DEFAULT '', verified_at INTEGER, created_at INTEGER NOT NULL
+      );
       CREATE TABLE IF NOT EXISTS events (
         id INTEGER PRIMARY KEY AUTOINCREMENT, job_id TEXT, project_id TEXT, type TEXT NOT NULL,
         message TEXT NOT NULL, created_at INTEGER NOT NULL
@@ -82,7 +87,10 @@ export class Store {
     })) {
       if (!columns.has(name)) this.db.exec(`ALTER TABLE profiles ADD COLUMN ${name} ${type}`);
     }
-    this.db.exec('PRAGMA user_version=2');
+    const projectColumns = new Set(this.all('PRAGMA table_info(projects)').map((c) => c.name));
+    if (!projectColumns.has('mailbox_id'))
+      this.db.exec('ALTER TABLE projects ADD COLUMN mailbox_id TEXT REFERENCES mailboxes(id)');
+    this.db.exec('PRAGMA user_version=3');
     for (const p of SEEDS)
       this.run(
         `INSERT OR IGNORE INTO platforms
@@ -131,19 +139,45 @@ export class Store {
     );
   }
   require(table, id) {
-    if (!['projects', 'platforms', 'jobs', 'profiles', 'batches'].includes(table))
+    if (!['projects', 'platforms', 'jobs', 'profiles', 'batches', 'mailboxes'].includes(table))
       throw new Error('Invalid table');
     const row = this.get(`SELECT * FROM ${table} WHERE id=?`, id);
     if (!row) throw new AppError('Không tìm thấy dữ liệu.', 404);
     return row;
   }
+  mailboxRef(id) {
+    if (!id) return null;
+    return this.require('mailboxes', id).id;
+  }
+  // Every website owns one email, shared by all of its entity profiles; no two websites
+  // may use the same inbox (aliases such as +tags or Gmail dots count as the same).
+  checkEmail(input, projectId = null) {
+    const key = emailKey(input.email);
+    if (!key) throw new AppError('Cần email riêng cho website này.');
+    const clash = this.all('SELECT id,name,email FROM projects WHERE id IS NOT ?', projectId).find(
+      (p) => emailKey(p.email) === key,
+    );
+    if (clash)
+      throw new AppError(
+        `Email này đã dùng cho dự án ${clash.name}. Mỗi website cần email riêng.`,
+        409,
+      );
+    if (input.mailbox_id) {
+      const mailbox = this.require('mailboxes', input.mailbox_id);
+      if (isGmail(mailbox.address) && emailKey(mailbox.address) !== key)
+        throw new AppError(
+          `Hộp thư Gmail ${mailbox.address} chỉ nhận thư của chính nó. Đặt email dự án là ${mailbox.address} hoặc chọn hộp thư khác.`,
+        );
+    }
+  }
   createProject(input) {
     const id = randomUUID(),
       now = Date.now();
+    this.checkEmail(input);
     try {
       this.run(
-        `INSERT INTO projects(id,name,website,website_key,username,description,email,logo_url,entity_type,monitoring,created_at,updated_at)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+        `INSERT INTO projects(id,name,website,website_key,username,description,email,logo_url,entity_type,monitoring,mailbox_id,created_at,updated_at)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
         id,
         input.name,
         normalizedUrl(input.website),
@@ -154,6 +188,7 @@ export class Store {
         input.logo_url,
         input.entity_type,
         Number(input.monitoring),
+        this.mailboxRef(input.mailbox_id),
         now,
         now,
       );
@@ -170,9 +205,10 @@ export class Store {
     return this.tx(() => {
       if (this.get("SELECT id FROM jobs WHERE project_id=? AND status='running'", id))
         throw new AppError('Đợi tác vụ đang chạy hoàn tất trước khi đổi thông tin.', 409);
+      this.checkEmail(input, id);
       try {
         this.run(
-          `UPDATE projects SET name=?,website=?,website_key=?,username=?,description=?,email=?,logo_url=?,entity_type=?,monitoring=?,version=version+1,updated_at=? WHERE id=?`,
+          `UPDATE projects SET name=?,website=?,website_key=?,username=?,description=?,email=?,logo_url=?,entity_type=?,monitoring=?,mailbox_id=?,version=version+1,updated_at=? WHERE id=?`,
           input.name,
           normalizedUrl(input.website),
           websiteKey(input.website),
@@ -182,6 +218,7 @@ export class Store {
           input.logo_url,
           input.entity_type,
           Number(input.monitoring),
+          this.mailboxRef(input.mailbox_id),
           Date.now(),
           id,
         );
@@ -477,6 +514,9 @@ export class Store {
         ...p,
         samples: JSON.parse(p.samples),
       })),
+      mailboxes: this.all(
+        'SELECT id,name,provider,address,imap_host,verified_at,created_at FROM mailboxes ORDER BY name',
+      ),
       accounts: this.all(
         'SELECT id,project_id,platform_id,remote_id,username,profile_url,verified_at FROM accounts',
       ),

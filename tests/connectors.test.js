@@ -8,7 +8,41 @@ const response = (data, status = 200) => ({
   headers: { 'content-type': 'application/json' },
   body: JSON.stringify(data),
 });
-for (const provider of ['github', 'gitlab'])
+test('gitlab: sync never writes (non-admin API is read-only) and hands mismatches to the operator', async () => {
+  const project = { ...projectInput(), name: 'Mộc Studio' };
+  const platform = { connector: 'gitlab', origin: 'https://gitlab.com' };
+  let user = {
+    id: 7,
+    username: 'moc',
+    web_url: 'https://gitlab.com/moc',
+    name: 'Old',
+    bio: 'old',
+    website_url: '',
+  };
+  let writes = 0;
+  const api = new Connectors({
+    request: async (url, options) => {
+      assert.match(url, /^https:\/\/gitlab.com\/api\/v4\/user$/);
+      if (options.method && options.method !== 'GET') writes++;
+      return response(user);
+    },
+  });
+  await assert.rejects(api.sync(project, platform, { remote_id: '7' }, 'test-token'), (error) => {
+    assert.equal(error.action, true);
+    assert.match(error.message, /GitLab không cho phép/);
+    return true;
+  });
+  user = {
+    ...user,
+    name: project.name,
+    bio: project.description.slice(0, 255),
+    website_url: project.website,
+  };
+  const result = await api.sync(project, platform, { remote_id: '7' }, 'test-token');
+  assert.equal(result.changed, false);
+  assert.equal(writes, 0);
+});
+for (const provider of ['github'])
   test(`${provider}: sync authenticates ownership, reads before updating and makes repeat runs idempotent`, async () => {
     const project = { ...projectInput(), name: 'Mộc Studio' };
     const platform = {

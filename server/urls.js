@@ -46,6 +46,21 @@ export function normalizedUrl(value) {
   return url.toString();
 }
 
+// Canonical mailbox identity: "+tag" suffixes and Gmail dots reach the same inbox, so
+// they must not count as different addresses when each website needs its own email.
+export function emailKey(value) {
+  const [local, domain] = String(value ?? '')
+    .trim()
+    .toLowerCase()
+    .split('@');
+  if (!local || !domain) return '';
+  const host = domain === 'googlemail.com' ? 'gmail.com' : domain;
+  let name = local.split('+')[0];
+  if (host === 'gmail.com') name = name.replaceAll('.', '');
+  return `${name}@${host}`;
+}
+export const isGmail = (value) => /@(gmail|googlemail).com$/i.test(String(value ?? '').trim());
+
 export const hostKey = (hostname) => hostname.toLowerCase().replace(/^www\./, '');
 export const websiteKey = (value) => hostKey(publicUrl(value).hostname);
 

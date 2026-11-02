@@ -94,6 +94,7 @@ test(
       await dialog.getByLabel('Tên thương hiệu *').fill('Mộc Studio');
       await dialog.getByLabel('Website chính thức *').fill('https://moc.example.com');
       await dialog.getByLabel('Username mong muốn *').fill('mocstudio');
+      await dialog.getByLabel('Email của website *').fill('contact@moc.example.com');
       await dialog.getByLabel('Mô tả thương hiệu').fill('Thiết kế thương hiệu và trải nghiệm số.');
       const usernameInput = dialog.getByLabel('Username mong muốn *');
       await usernameInput.focus();
@@ -107,6 +108,7 @@ test(
       await dialog.getByLabel('Tên thương hiệu *').fill('Sông Coffee');
       await dialog.getByLabel('Website chính thức *').fill('https://song.example.com');
       await dialog.getByLabel('Username mong muốn *').fill('songcoffee');
+      await dialog.getByLabel('Email của website *').fill('contact@song.example.com');
       await dialog.getByRole('button', { name: 'Lưu dự án', exact: true }).click();
       await dialog.waitFor({ state: 'hidden' });
       assert.equal(store.all('SELECT * FROM projects').length, 2);
@@ -143,6 +145,18 @@ test(
       assert.equal(store.all('SELECT * FROM profile_checks').length, 1);
       await dialog.getByRole('button', { name: 'Đóng', exact: true }).last().click();
       await page.locator('.nav-item').filter({ hasText: 'Dự án' }).click();
+      const healthyUrl = store.all('SELECT url FROM profiles')[0].url;
+      await page
+        .locator('.project-card')
+        .filter({ hasText: 'Mộc Studio' })
+        .getByRole('button', { name: 'Schema' })
+        .click();
+      dialog = page.getByRole('dialog');
+      await dialog.locator('.schema-code').waitFor();
+      const schemaText = await dialog.locator('.schema-code').textContent();
+      assert.match(schemaText, /"sameAs"/);
+      assert.ok(schemaText.includes(healthyUrl));
+      await dialog.getByRole('button', { name: 'Đóng', exact: true }).click();
       await page
         .locator('.project-card')
         .filter({ hasText: 'Mộc Studio' })

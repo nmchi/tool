@@ -91,7 +91,7 @@ export function AccountModal({
           hint={
             platformId === 'github'
               ? 'GitHub: token có quyền đọc/cập nhật hồ sơ người dùng (user hoặc quyền Profile phù hợp).'
-              : 'GitLab: token có quyền api để đọc và cập nhật hồ sơ.'
+              : 'GitLab: token có quyền read_user. API GitLab không cho tự sửa hồ sơ; ứng dụng chỉ đối chiếu.'
           }
         >
           <input

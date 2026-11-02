@@ -7,6 +7,7 @@ import os from 'node:os';
 import { createApp } from '../server/app.js';
 import { createVault } from '../server/vault.js';
 import { setupStore, projectInput } from './helpers.js';
+import { AppError } from '../server/urls.js';
 
 async function fixture(t, accessToken = '') {
   const { store, project } = setupStore();
@@ -25,6 +26,18 @@ async function fixture(t, accessToken = '') {
       vault,
       accessToken,
       port,
+      mail: {
+        client: (mailbox, secret) => ({
+          async test() {
+            if (secret === 'wrong') throw new AppError('Hộp thư từ chối đăng nhập.', 502);
+          },
+          async search() {
+            return [
+              { from: 'noreply@github.com', subject: 'Verify', date: 1, text: 'secret body' },
+            ];
+          },
+        }),
+      },
       connectors: {
         identity: async () => ({
           remote_id: '42',
@@ -221,4 +234,131 @@ test('manual ownership/email/2FA declarations persist without changing public ve
   assert.equal(updated.status, 'unverified');
   assert.equal(updated.last_checked, null);
   assert.deepEqual((await request(`/profiles/${profile.id}/history`)).body, []);
+});
+
+test('mailboxes are tested before saving, keep secrets out of state and can be shared by projects', async (t) => {
+  const { request, project, store } = await fixture(t);
+  const base = {
+    name: 'Workspace chung',
+    provider: 'imap',
+    address: 'Inbox@brand.com',
+    imap_host: 'imap.gmail.com',
+  };
+  const rejected = await request('/mailboxes', {
+    method: 'POST',
+    body: JSON.stringify({ ...base, secret: 'wrong' }),
+  });
+  assert.equal(rejected.status, 502);
+  assert.equal(store.all('SELECT * FROM mailboxes').length, 0);
+  assert.equal(
+    (await request('/mailboxes', { method: 'POST', body: JSON.stringify({ ...base, secret: '' }) }))
+      .status,
+    400,
+  );
+  const created = await request('/mailboxes', {
+    method: 'POST',
+    body: JSON.stringify({ ...base, secret: 'abcd efgh ijkl mnop' }),
+  });
+  assert.equal(created.status, 201);
+  assert.equal(created.body.address, 'inbox@brand.com');
+  assert.equal(created.body.encrypted_secret, undefined);
+  const stored = store.get('SELECT encrypted_secret FROM mailboxes');
+  assert.equal(stored.encrypted_secret.includes('abcd efgh'), false);
+  const manual = await request('/mailboxes', {
+    method: 'POST',
+    body: JSON.stringify({ name: 'Thủ công', provider: 'manual', address: 'me@brand.com' }),
+  });
+  assert.equal(manual.status, 201);
+
+  const state = await request('/state');
+  assert.equal(state.body.mailboxes.length, 2);
+  assert.equal(state.text.includes('encrypted_secret'), false);
+
+  const { id, version, created_at, updated_at, website_key, ...fields } = project;
+  const update = await request(`/projects/${project.id}`, {
+    method: 'PUT',
+    body: JSON.stringify({ ...fields, monitoring: true, mailbox_id: created.body.id }),
+  });
+  assert.equal(update.status, 200);
+  assert.equal(update.body.mailbox_id, created.body.id);
+  assert.equal(
+    (
+      await request(`/projects/${project.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ ...fields, monitoring: true, mailbox_id: 'missing' }),
+      })
+    ).status,
+    404,
+  );
+
+  const check = await request(`/mailboxes/${created.body.id}/test`, {
+    method: 'POST',
+    body: JSON.stringify({ to: 'contact@one.example.com' }),
+  });
+  assert.equal(check.status, 200);
+  assert.deepEqual(check.body.messages, [
+    { from: 'noreply@github.com', subject: 'Verify', date: 1 },
+  ]);
+
+  // A personal Gmail inbox only receives its own address.
+  const gmail = await request('/mailboxes', {
+    method: 'POST',
+    body: JSON.stringify({
+      ...base,
+      name: 'Gmail riêng',
+      address: 'brand.one@gmail.com',
+      secret: 'x',
+    }),
+  });
+  const mismatch = await request(`/projects/${project.id}`, {
+    method: 'PUT',
+    body: JSON.stringify({ ...fields, monitoring: true, mailbox_id: gmail.body.id }),
+  });
+  assert.equal(mismatch.status, 400);
+  assert.match(mismatch.body.error, /chỉ nhận thư của chính nó/);
+  const matched = await request(`/projects/${project.id}`, {
+    method: 'PUT',
+    body: JSON.stringify({
+      ...fields,
+      email: 'Brand.One@googlemail.com',
+      monitoring: true,
+      mailbox_id: gmail.body.id,
+    }),
+  });
+  assert.equal(matched.status, 200);
+
+  assert.equal((await request(`/mailboxes/${created.body.id}`, { method: 'DELETE' })).status, 200);
+  assert.equal(store.require('projects', project.id).mailbox_id, gmail.body.id);
+});
+
+test('each website needs its own email; aliases of one inbox count as the same address', async (t) => {
+  const { request } = await fixture(t);
+  const missing = await request('/projects', {
+    method: 'POST',
+    body: JSON.stringify({ ...projectInput('two'), email: '' }),
+  });
+  assert.equal(missing.status, 400);
+  for (const email of ['CONTACT@one.example.com', 'contact+github@one.example.com']) {
+    const clash = await request('/projects', {
+      method: 'POST',
+      body: JSON.stringify({ ...projectInput('two'), email }),
+    });
+    assert.equal(clash.status, 409, email);
+    assert.match(clash.body.error, /Mỗi website cần email riêng/);
+  }
+  const first = await request('/projects', {
+    method: 'POST',
+    body: JSON.stringify({ ...projectInput('two'), email: 'brand.two@gmail.com' }),
+  });
+  assert.equal(first.status, 201);
+  const dotted = await request('/projects', {
+    method: 'POST',
+    body: JSON.stringify({ ...projectInput('three'), email: 'brandtwo@gmail.com' }),
+  });
+  assert.equal(dotted.status, 409);
+  const own = await request('/projects', {
+    method: 'POST',
+    body: JSON.stringify(projectInput('three')),
+  });
+  assert.equal(own.status, 201);
 });

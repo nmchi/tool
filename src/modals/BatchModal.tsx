@@ -94,7 +94,7 @@ export function BatchModal({
                   ? 'Hỗ trợ đăng ký, nhận URL và kiểm tra'
                   : k === 'verify'
                     ? 'Kiểm tra công khai các URL đã lưu'
-                    : 'Cập nhật tài khoản GitHub / GitLab'}
+                    : 'Cập nhật GitHub, đối chiếu GitLab'}
               </small>
             </button>
           ))}
@@ -104,7 +104,8 @@ export function BatchModal({
             <CircleAlert size={17} />
             <p>
               Tác vụ cập nhật <strong>tên, mô tả và website</strong> của tài khoản đã kết nối.
-              GitHub dùng 160 ký tự mô tả, GitLab 255 ký tự. Chọn đúng tài khoản của thương hiệu.
+              GitHub dùng 160 ký tự mô tả. GitLab (255 ký tự) chỉ được đối chiếu vì API không cho tự
+              sửa hồ sơ. Chọn đúng tài khoản của thương hiệu.
             </p>
           </div>
         )}

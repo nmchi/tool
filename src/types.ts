@@ -8,6 +8,7 @@ export type Project = {
   logo_url: string;
   entity_type: 'organization' | 'person';
   monitoring: number;
+  mailbox_id: string | null;
   version: number;
   profile_count: number;
   healthy_count: number;
@@ -57,6 +58,15 @@ export type Profile = {
   email_verified: 'unknown' | 'yes' | 'no';
   two_factor: 'unknown' | 'enabled' | 'disabled' | 'unavailable';
   owner_confirmed: number;
+};
+export type Mailbox = {
+  id: string;
+  name: string;
+  provider: 'imap' | 'gmail_api' | 'manual';
+  address: string;
+  imap_host: string;
+  verified_at: number | null;
+  created_at: number;
 };
 export type Account = {
   id: string;
@@ -114,6 +124,7 @@ export type State = {
   batches: Batch[];
   events: Event[];
   accounts: Account[];
+  mailboxes: Mailbox[];
   stats: {
     projects: number;
     profiles: number;

@@ -9,7 +9,9 @@
 - Hai chế độ nhập riêng: **danh mục nền tảng từ URL mẫu** và **hồ sơ thực tế của một dự án**. Danh mục mới mặc định chưa bật; hồ sơ đang có được giữ nguyên khi nhập hàng loạt.
 - Tạo lô tối đa 500 cặp dự án–nền tảng; chống trùng công việc đang mở, tạm dừng/tiếp tục/hủy lô, phục hồi lease sau gián đoạn.
 - Đăng ký có hỗ trợ: chuẩn bị thông tin, chuyển bước đăng ký/xác minh cho người quản lý, nhận URL rồi kiểm tra công khai.
-- **GitHub và GitLab:** xác thực token, kiểm tra đúng tài khoản, cập nhật tên/mô tả/website của tài khoản đã có. Đọc trước khi ghi để chạy lại an toàn. Một tài khoản API chỉ thuộc một dự án trong bản này.
+- **GitHub và GitLab:** xác thực token và kiểm tra đúng tài khoản. GitHub: cập nhật tên/mô tả/website qua API, đọc trước khi ghi để chạy lại an toàn. GitLab: API chỉ cho quản trị viên sửa hồ sơ, nên ứng dụng chỉ đối chiếu và bàn giao cho người quản lý khi chưa khớp. Một tài khoản API chỉ thuộc một dự án trong bản này.
+- **Hộp thư xác minh:** kết nối Gmail/Google Workspace bằng App Password (IMAP), Google Workspace bằng service account (Gmail API, chỉ đọc, domain-wide delegation), IMAP khác, hoặc chế độ thủ công. Mỗi website bắt buộc có email riêng (không trùng website khác, kể cả biến thể `+tag` hay dấu chấm của Gmail); mọi hồ sơ entity của website dùng đúng email đó. Hộp thư Workspace có thể nhận alias của nhiều website; Gmail cá nhân chỉ phục vụ website có email trùng địa chỉ Gmail. Kết nối được kiểm tra trước khi lưu; bí mật được mã hóa như token. Chưa dùng để tự đăng ký (giai đoạn tiếp theo).
+- **Schema entity:** sinh JSON-LD `Organization`/`Person` với `sameAs` gồm các hồ sơ đang ở trạng thái “Đang hoạt động”, để dán vào trang chủ.
 - Kiểm tra hồ sơ: tách tình trạng trang, khớp thương hiệu, backlink và chỉ thị `noindex`. Trang đăng nhập/CAPTCHA, HTTP 403 hoặc lỗi mạng không được coi là hồ sơ đã xác minh hay đã bị xóa.
 - Lưu bằng chứng dạng dữ liệu, lịch sử kiểm tra, lịch sử tác vụ; thông tin sở hữu/email/2FA do người quản lý khai báo được phân biệt với kết quả kiểm tra tự động.
 - Theo dõi sau 1/7/30 ngày kể từ lần xác minh đầu, sau đó mỗi 30 ngày; cần ứng dụng đang chạy. Tác vụ đang chờ người xử lý không được tự tạo lại.
@@ -53,10 +55,11 @@ Giao diện phát triển dùng cổng **5173**, API dùng **4310**. Chạy các
 3. Xem xét nền tảng, URL đăng ký và khả năng hỗ trợ trước khi bật. Bản này gộp theo hostname đã bỏ `www`, không tự coi các subdomain/ngôn ngữ là cùng một tài khoản.
 4. Tạo lô **Chuẩn bị hồ sơ**. Trong **Cần xử lý**, sao chép thông tin, mở nền tảng, hoàn tất các bước đăng ký/xác minh và cung cấp URL công khai.
 5. Nếu có hồ sơ sẵn, dùng **Thêm URL** hoặc nhập ở chế độ **Hồ sơ của dự án**, rồi tạo lô **Kiểm tra hồ sơ**.
-6. Với GitHub/GitLab, kết nối token của đúng tài khoản rồi tạo lô **Cập nhật qua API**. GitHub dùng tối đa 160 ký tự mô tả, GitLab 255; giao diện công việc hiển thị nội dung tương ứng. Tên và website cũng sẽ được cập nhật.
+6. Với GitHub/GitLab, kết nối token của đúng tài khoản rồi tạo lô **Cập nhật qua API**. GitHub dùng tối đa 160 ký tự mô tả và được cập nhật tự động; GitLab (255 ký tự) được đối chiếu, nếu chưa khớp thì công việc chuyển sang **Cần xử lý** để bạn sửa trên gitlab.com.
 7. Mở chi tiết hồ sơ để khai báo quyền quản lý/email/2FA, xem lịch sử và kiểm tra lại. Xuất CSV ở trang hồ sơ hoặc hàng đợi.
+8. Khi đã có hồ sơ đang hoạt động, bấm **Schema** trên thẻ dự án để sao chép JSON-LD và dán vào `<head>` trang chủ. Tạo lại sau khi có thêm hồ sơ được xác minh.
 
-GitHub cần token được phép đọc và cập nhật hồ sơ người dùng (`user` với classic token, hoặc quyền Profile tương ứng khi loại token hỗ trợ). GitLab cần quyền `api`. Kết nối thành công xác nhận khả năng đọc danh tính; quyền ghi còn được kiểm tra khi chạy cập nhật. Hãy dùng giao diện tài khoản để nhập token; không nhập mật khẩu vào mô tả hoặc tệp URL.
+GitHub cần token được phép đọc và cập nhật hồ sơ người dùng (`user` với classic token, hoặc quyền Profile tương ứng khi loại token hỗ trợ). GitLab cần quyền `read_user`. Kết nối thành công xác nhận khả năng đọc danh tính; quyền ghi còn được kiểm tra khi chạy cập nhật. Hãy dùng giao diện tài khoản để nhập token; không nhập mật khẩu vào mô tả hoặc tệp URL.
 
 ## Mạng
 
