@@ -1,0 +1,12 @@
+node_modules/
+dist/
+data/
+.env
+.env.*
+!.env.example
+*.tsbuildinfo
+coverage/
+test-results/
+*.log
+package-lock.json
+npm-shrinkwrap.json
